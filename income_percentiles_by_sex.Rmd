@@ -1,0 +1,91 @@
+---
+title: "Income percentiles by sex"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+We start off by loading the packages needed. 
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(gganimate)
+```
+
+Access open data from the Icelandic Tax Authority, RSK. 
+
+```{r}
+
+
+
+rsk_url <- "https://www.rsk.is/media/alagning-einstaklinga/I_A4_a_1&2_EIGNIR_HLUTFTEK_KYN.xlsx"
+rsk_tf <- tempfile()
+download.file(rsk_url, rsk_tf, mode = "wb")
+rsk <- readxl::read_excel(rsk_tf, sheet = 2)
+```
+
+```{r}
+rsk_skipting <- rsk %>% 
+  janitor::clean_names() %>% 
+  mutate(Kyn = recode(as.character(kyn),
+                      "1" = "Karlar",
+                      "2" = "Konur")) %>% 
+  select(tekjuar, heildartekjubil, Kyn, fjoldi) %>% 
+  group_by(tekjuar, Kyn) %>% 
+  summarize(summu_fjoldi = sum(fjoldi)) 
+
+
+rsk_hreint <- rsk %>% 
+  janitor::clean_names() %>% 
+  mutate(Kyn = recode(as.character(kyn),
+                      "1" = "Karlar",
+                      "2" = "Konur")) %>% 
+  left_join(rsk_skipting, by = c("tekjuar", "Kyn")) %>% 
+  select(tekjuar, heildartekjubil, Kyn, fjoldi, summu_fjoldi)
+
+#Íslenska
+rsk_hreint %>% 
+  mutate(lina = if_else(Kyn == "Konur",
+                        summu_fjoldi,
+                        NA_real_)) %>% 
+  ggplot(aes(x = heildartekjubil, y = fjoldi, fill = Kyn)) +
+  geom_col(width = 1) +
+  geom_abline(aes(slope = 0, intercept = lina / 100), alpha = 0.75, color = "black", size = 1) +
+  ggthemes::scale_fill_calc() +
+  theme(legend.position = "bottom", plot.caption = element_text(color = "darkgrey")) +
+  labs(title = 'Year: {round(frame_time,0)}', 
+       x = 'Income percentile', y = 'Count', fill = NULL, caption = "@hlynur") +
+  transition_time(tekjuar)
+
+#Enska
+hreyfimynd <- rsk_hreint %>%
+  mutate(`Biological sex` = recode(as.character(Kyn),
+                      "Karlar" = "Male",
+                      "Konur" = "Female"),
+         lina = if_else(`Biological sex` == "Female",
+                        summu_fjoldi,
+                        NA_real_),
+         `Biological sex` = fct_relevel(`Biological sex`,
+                                        "Male", "Female")) %>% 
+  ggplot(aes(x = heildartekjubil, y = fjoldi, fill = `Biological sex`)) +
+  geom_col(width = 1) +
+  geom_abline(aes(slope = 0, intercept = lina / 100), alpha = 0.75, color = "black", size = 1) +
+  ggthemes::scale_fill_calc() +
+  theme(legend.position = "bottom", plot.caption = element_text(color = "darkgrey"),
+        text = element_text(size = 18)) +
+  labs(title = 'Year: {round(frame_time,0)}', 
+       x = 'Income percentile', y = 'Count', fill = NULL, caption = "@hlynur") +
+  transition_time(tekjuar)
+```
+
+```{r}
+anim_save("income_percentiles.gif")
+```
+
+```{r}
+
+animate(hreyfimynd, width = 1000, height = 1000)
+
+```
+
